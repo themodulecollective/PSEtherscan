@@ -1,7 +1,9 @@
 function Get-EthSGasOracle
 {
     [cmdletbinding()]
-    param([string]$EtherscanAPIKey)
+    param(
+        [string]$EtherscanAPIKey = $EtherscanAPIKey
+    )
 
     $BaseURI = 'https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey='
     $URIWithKey = $BaseURI + $EtherscanAPIKey
