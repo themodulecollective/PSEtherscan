@@ -1,34 +1,6 @@
 #LocalSpeech notification requires Windows PowerShell and the OutSpeech module
 #LocalNotification requires BurntToast Module and running on Windows OS
 #IFTTT Notification requires configuration of a webhook app in your IFTTT account
-function Send-IftttRichNotification
-{
-    #Attribution: https://www.dennisrye.com/post/send-smartphone-notifications-powershell-ifttt/
-    [cmdletbinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$EventName,
-
-        [Parameter(Mandatory)]
-        [string]$Key,
-
-        [string]$Value1,
-
-        [string]$Value2,
-
-        [string]$Value3
-    )
-
-    $webhookUrl = "https://maker.ifttt.com/trigger/{0}/with/key/{1}" -f $EventName, $Key
-
-    $body = @{
-        value1 = $Value1
-        value2 = $Value2
-        value3 = $Value3
-    }
-
-    Invoke-RestMethod -Method Get -Uri $webhookUrl -Body $body
-}
 
 function Watch-EthGasPrice
 {
@@ -42,21 +14,39 @@ function Watch-EthGasPrice
         [ValidateSet('LocalSpeech', 'LocalNotification', 'IFTTTNotification')]
         [string[]]$NotificationType
         ,
-        [string]$IFTTTEventName
+        [string]$EventName
         ,
-        [string]$IFTTTKey
+        [string]$Key
+        ,
+        [string]$EtherscanAPIKey
+        ,
+        [parameter(Mandatory)]
+        [ValidateSet('SafeLow', 'Medium', 'Fast')]
+        $PriceType
     )
 
     do
     {
-        $gP = Get-EthSGasOracle
+        $gP = Get-EthSGasOracle -EtherscanAPIKey $EtherscanAPIKey
         $stamp = Get-Date -Format yyyyMMddhhmmss
-        switch ($gP.SafeGasPrice)
+        switch ($PriceType)
+        {
+            'SafeLow'
+            { $Price = $gP.SafeGasPrice }
+            'Medium'
+            { $Price = $gP.ProposeGasPrice }
+            'Fast'
+            { $Price = $gP.FastGasPrice }
+        }
+
+        $NotificationText = "Ethereum gas price is $Price"
+
+        switch ($Price)
         {
             { [int]$_ -le $MaxPrice }
             {
                 [int]$price = $_
-                $NotificationText = "Ethereum gas price is $price"
+                Write-Information -MessageData "$stamp $NotificationText" -InformationAction Continue
                 switch ($NotificationType)
                 {
                     'LocalSpeech'
@@ -65,18 +55,18 @@ function Watch-EthGasPrice
                     }
                     'LocalNotification'
                     {
-                        $BTNotification = $NotificationText + " $stamp"
+                        $BTNotification = "$stamp $NotificationText. Threshold $MaxPrice."
                         New-BurntToastNotification -Text $BTNotification
                     }
                     'IFTTTNotification'
                     {
-                        Send-IftttRichNotification -EventName $IFTTTEventName -Key $IFTTTKey -Value1 'Eth Gas Price Low' -Value2 $price -Value3 'https://etherscan.io/gastracker'
+                        Send-IftttRichNotification -EventName $EventName -Key $Key -Value1 "$NotificationText. Threshold $MaxPrice" -Value2 $price -Value3 'https://etherscan.io/gastracker'
                     }
                 }
             }
             default
             {
-                "$stamp Ethereum gas is NOT cheap. Gas price is $_"
+                Write-Information -MessageData "$stamp $NotificationText. Threshold $MaxPrice" -InformationAction Continue
             }
         }
         Start-Sleep -Seconds $SleepSeconds
